@@ -1,0 +1,9 @@
+Broadcasting in Python::
+
+    broadcasting is a means of vectorizing array operations, such that loops occur in C instead of directly in Python.
+
+    when operating on two arrays, numpy compares both shapes. The dimensions are compatible if they are both equal, or if one of them is 1.
+
+    in the default case, if neither of these two conditions are met, we get a "ValueError" exception.
+
+    
