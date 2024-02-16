@@ -51,8 +51,8 @@ quat_array_upsampled = scalar_first2last(quat_array_upsampled)
 
 # save the x_block_0 slerp, AFTER fz reduction.
 basename = basename.replace('.npy', '')
-np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Symm_SLERPED.npy', quat_array_upsampled)
-np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Symm_SLERPED_FZ.npy', quat_array_upsampled_fz)
+np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Double_Symm_SLERPED.npy', quat_array_upsampled)
+np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Double_Symm_SLERPED_FZ.npy', quat_array_upsampled_fz)
 
 
 

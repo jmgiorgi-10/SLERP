@@ -230,6 +230,9 @@ def fz_reduce(q,syms):
         q_fz = q_fz.reshape(shape)
         return q_fz
 
+def misorientation_reduce(X, syms):
+        ref_indices = torch.Tensor([])
+
 def inverse2(q):
 
         # import pdb; pdb.set_trace()
@@ -262,16 +265,6 @@ def quat_exp2(q, t):
         # obtain unit versor (not present in slerp3 code)
         v_unit[mask2] = v[mask2] / torch.linalg.vector_norm(v[mask2],2,-1).unsqueeze(-1)
 
-        # omega = torch.arcsin(torch.clamp(torch.linalg.vector_norm(v,2,-1),min=-1,max=1))
-
-        # # CREATING NANS! --> applying safe arccos #
-        # theta = 2*torch.arccos(torch.clamp(q[:,0], min=-1, max=1)) # rotational angle associated with this unit quaternion in S(3) hyper-sphere
-
-        
-        # inds = torch.where(torch.sin(theta) < .001)
-        # mask = (inds == 1)
-        # q[mask][:,0] = 0.5 *  
-
         # qm.w = (qa.w * 0.5 + qb.w * 0.5);
 	# 	qm.x = (qa.x * 0.5 + qb.x * 0.5);
 	# 	qm.y = (qa.y * 0.5 + qb.y * 0.5);
@@ -281,32 +274,12 @@ def quat_exp2(q, t):
         cos_slerp = torch.cos(slerp_angles) # size=[7372,3]
         sin_slerp = torch.sin(slerp_angles) # size=[7372,3]
 
-        # CREATING NANS! Causing divisions by Zero
-        #mask = (q[:,1] == 0 and q[:,2] == 0 and q[:,3] == 0)
-
-        # import pdb; pdb.set_trace()
-        # mask = (torch.all(q[:,1:4] != torch.Tensor([0,0,0]),dim=-1))
-        # v = q[:,1:4]
-        # v[mask] = (v[mask].t() / torch.sin(theta[mask])).t() # adjusting readjusting dimensions to broadcast division.
-
-        # sin_slerp = sin_slerp.unsqueeze(-1).repeat(1, 1, 3) # [7372, 3, 3]
-        
-        # # bug root source is happending below:
         q_new = torch.zeros([q.shape[0], t.shape[0], 4])
 
         q_new[:,:,0] = cos_slerp
         q_new[:,:,1:4] = v_unit.unsqueeze(1) * sin_slerp.unsqueeze(-1) 
 
-        # q_new[:,:,0] = mag**t * cos_slerp # [7372, 3] : [interpolation_pairs, interpolation_points_per_pair]
-
-        # q_new[:,:,1:4] = (mag**t * sin_slerp).unsqueeze(-1) * v.unsqueeze(1)
-
-        # q_new[:,:,0] = cos_slerp
-        # # issue might have been I had a -1 in unsqueeze instead of 1. Dimensions worked out, but we were broadcasting across the incorrect dimension.
-        # # q_new[:,:,1:4] = v.unsqueeze(1) * sin_slerp 
-        # q_new[:,:,1:4] = sin_slerp * v.unsqueeze(-1)
-
-        return(q_new)
+        return q_new
 
 # def quat_exp(q, t):
 #         theta = torch.arccos(q[:,0])
@@ -324,6 +297,8 @@ def quat_exp2(q, t):
 #         # import pdb; pdb.set_trace()
 #         q_slerp = hadamard_prod(q1, quat_exp(hadamard_prod(inverse(q1),q2), t))
 #         return q_slerp
+
+
 
 def slerp_calc2(q1, q2, t):
         import pdb; pdb.set_trace()
@@ -362,28 +337,76 @@ def slerp_calc2(q1, q2, t):
  
 
 # num_syms parameter: should disorientation be calculated for no quaternions, 1 quaternion, or both (2) quaterniions
-def slerp2(q1, q2, t, syms, num_syms):
+def slerp2(q1, q2, t, syms, num_syms=0):
 
-        # import pdb; pdb.set_trace()
+        if (num_syms == 0):
+                q3 = slerp_calc2(q1, q2, t)
+                return q3
 
         q1_w_syms = outer_prod(q1, syms)
-        q2_w_syms = outer_prod(q2, syms)
 
         q2_repeat = q2.unsqueeze(1)
         q2_repeat = q2_repeat.repeat(1, 48, 1)
-
-        # Change here!
-        dists = misorientation(q1_w_syms, q2_w_syms)
+        dists = misorientation(q1_w_syms, q2_repeat)
         inds1 = torch.min(dists,-1)[1]
-
         q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
 
-    
-        q3 = slerp_calc2(q1_min, q2, t) # only one slerp calculated, per thread, for two quats with minimum disorientation
+        if (num_syms == 1):
+                q3 = slerp_calc2(q1_min, q2, t)
+                return q3
 
-        # q3 = slerp_calc2(q1,q2,t)
+        # num_syms == 3:
 
+        import pdb; pdb.set_trace()
+
+        q2_w_syms = outer_prod(q2, syms)
+        q2_syms_permutations = q2_w_syms.unsqueeze(2)
+        q2_syms_permutations = q2_syms_permutations.repeat(1,1,48,1)
+
+        min_theta = 1000*torch.ones(q1.shape[0])
+        permutation_index = 0
+        for i in range(48):
+                dists = misorientation(q1_w_syms, q2_syms_permutations[:,:,i,:])
+                theta = torch.min(dists,-1)[0]
+                if (theta < min_theta): # would need element-wise inequality operator to avoid another for loop
+                        min_theta = theta # need element-wise operator here as well
+                        permutation_index = i
+                
+        dists = misorientation(q1_w_syms, q2_syms_permuatations[:,:,permutation_index,:])
+        inds = torch.min(dists,-1)[1]
+
+
+        dists = misorientation(q1_syms_permutations, q2_syms_permutations)
+        inds = torch.min(dists,-1)[1]
+        q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
+        q2_temp = q2_syms_permutations[:,:,permutation_index,:]
+        q2_min = q2_temp[torch.arange(len(q2_temp)), inds1]
+
+        q3 = slerp_calc2(q1_min, q2_min, t)
         return q3
+
+        # q2_w_syms = outer_prod(q2, syms)
+        # dists = misorientation(q1_w_syms, q2_w_syms)
+
+        # inds = torch.min(dists,-1)[1]
+        # q1_min = q2_w_syms[torch.arange(len(q1_w_syms)), inds]
+        # q2_min = q2_w_syms[torch.arange(len(q2_w_syms)), inds]
+
+        # q3 = slerp_calc2(q1_min, q2, t)
+        # q3_w_syms = torch.outer(q3, syms)
+
+        # dists = misorientation(q3_w_syms, q1)
+        # inds = torch.min(dists,-1)[1]
+
+        # q3_min = q3_w_syms[torch.arange(len(q3_w_syms)), inds]
+
+        # indices_permute = list(permutations(range(48)))
+
+        # q1_w_syms_permute = torch.zeros(q1_syms.shape[0], 48*48, 4)
+        # for i, indices in enumerate(indices_permute):
+        #         q1_w_syms_permute[:,i,:] = q1_w_syms[:,indices, :]
+
+        return q3_min
 
 # Most efficient upsampling function, with No nested for loops, and parallel computing.
 def quat_upsampling_symm3(X,scale=4):
@@ -411,7 +434,7 @@ def quat_upsampling_symm3(X,scale=4):
         q1.to(device); q2.to(device); t.to(device)
 
         # import pdb; pdb.set_trace()
-        q_interp_cols = slerp2(q1, q2, t, fcc_syms) # seems like there are no NaN values here.
+        q_interp_cols = slerp2(q1, q2, t, fcc_syms, 2) # seems like there are no NaN values here.
         q_interp_cols = q_interp_cols.reshape(-1,X.shape[0],3,4)
         # dimensions should be the amount of interpolation pairs, rows, interpolations per pair, 4
 
@@ -422,7 +445,6 @@ def quat_upsampling_symm3(X,scale=4):
                 # X_scaled[::scale, indices2, :] = q_interp_cols[:,k-1,:].reshape(X.shape[0],-1,4)
 
         import pdb; pdb.set_trace()
-
         # Now, perform row-based interplation
         # ARE THERE ZERO QUATS GOING INTO Q1 OR Q2?
         q1 = torch.Tensor([]); q2 = torch.Tensor([])
@@ -431,7 +453,7 @@ def quat_upsampling_symm3(X,scale=4):
                 q2 = torch.cat([q2, X_scaled[(i+1)*scale,:,:]])
 
         # import pdb; pdb.set_trace()
-        q_interp_rows = slerp2(q1, q2, t, fcc_syms)
+        q_interp_rows = slerp2(q1, q2, t, fcc_syms, 2)
         q_interp_rows = q_interp_rows.reshape(-1,X_scaled.shape[1],3,4)
         q_interp_rows = torch.movedim(q_interp_rows, 2, 1)
 
@@ -445,7 +467,6 @@ def quat_upsampling_symm3(X,scale=4):
 def quat_upsampling_symm2(X,scale=4):
 
         device = torch.device('cuda:0')
-
         X_scaled = torch.zeros((scale*X.shape[0], scale*X.shape[1], 4))
         # place non-interpolated values
         # for i in range(X.shape[0]):
