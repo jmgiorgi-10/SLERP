@@ -42,6 +42,8 @@ basename = os.path.basename(file_array[0])
 filename = os.path.splitext(basename)[0]
 
 quat_array_upsampled = normalize(quat_array_upsampled)
+basename = basename.replace('.npy', '')
+np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_SLERPED.npy', quat_array_upsampled)
 
 import pdb; pdb.set_trace()
 quat_array_upsampled_fz = fz_reduce(quat_array_upsampled, fcc_syms) # reduces angles represented by quaternions to the fundamental zone of the specific crystal element 
@@ -50,9 +52,5 @@ quat_array_upsampled_fz = scalar_first2last(quat_array_upsampled_fz)
 quat_array_upsampled = scalar_first2last(quat_array_upsampled)
 
 # save the x_block_0 slerp, AFTER fz reduction.
-basename = basename.replace('.npy', '')
-np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Double_Symm_SLERPED.npy', quat_array_upsampled)
-np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_Double_Symm_SLERPED_FZ.npy', quat_array_upsampled_fz)
-
-
+np.save(f'/media/hdd3/jmgiorgi/SLERP-symm/Open_718/X4/{basename}_SLERPED_FZ.npy', quat_array_upsampled_fz)
 

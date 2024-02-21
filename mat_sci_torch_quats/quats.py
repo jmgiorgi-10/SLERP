@@ -119,7 +119,7 @@ def vec2mat(X):
 
 def hamilton_prod(q1,q2):
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
         if (q1.shape[1] > q2.shape[1]): # one of them will have the interpolation parameter t embedded in that dimension
                 q_new = torch.zeros(q1.shape)
@@ -197,7 +197,7 @@ def quat_dist(q1,q2=None):
         this will return the arc length along the sphere. For points within the
         sphere, it reduces to a function of MSE.
         """
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if q2 is None: mse = (q1[...,0]-1)**2 + (q1[...,1:]**2).sum(-1)
         else: mse = ((q1-q2)**2).sum(-1)
         
@@ -207,7 +207,7 @@ def quat_dist(q1,q2=None):
 
 def misorientation(q1, q2):
 #   import pdb; pdb.set_trace()
-  return(4*torch.arcsin(torch.linalg.vector_norm(q1 - q2, 2, dim=-1)/2)) 
+  return(4*torch.arcsin(torch.clamp(torch.linalg.vector_norm(q1 - q2, 2, dim=-1)/2,min=-1,max=1))) 
         
 def rot_dist(q1,q2=None):
         """ Get dist between two rotations, with q <-> -q symmetry """
@@ -249,7 +249,7 @@ def inverse2(q):
 # you need to understand 
 def quat_exp2(q, t):
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
         # Quaternion normalization
         mag = torch.linalg.vector_norm(q,2,-1).unsqueeze(-1)
@@ -301,7 +301,7 @@ def quat_exp2(q, t):
 
 
 def slerp_calc2(q1, q2, t):
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # edited to unsqueeze q1 in dim=1, to render it broadcastable with the exponentiated quaternion for various values of interpolation parameter 't'
 
         # ensure unit quaternion
@@ -311,7 +311,7 @@ def slerp_calc2(q1, q2, t):
         ## ERROR: In outer hamilton product, q1 should get repeated in the 't' dimenision, after squeezing
         
         q_slerp = hamilton_prod(quat_exp2(hamilton_prod(q2, inverse2(q1)), t), q1.unsqueeze(1).repeat(1,3,1))
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return q_slerp
 
 # should only need to apply disorientation slerp twice, once to fill in cols, and once to fill in rows.
@@ -347,43 +347,77 @@ def slerp2(q1, q2, t, syms, num_syms=0):
 
         q2_repeat = q2.unsqueeze(1)
         q2_repeat = q2_repeat.repeat(1, 48, 1)
-        dists = misorientation(q1_w_syms, q2_repeat)
+        # dists = misorientation(q1_w_syms, q2_repeat)
+        dists = quat_dist(q1_w_syms, q2_repeat)
         inds1 = torch.min(dists,-1)[1]
         q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
 
-        if (num_syms == 1):
+        if(num_syms == 1):
                 q3 = slerp_calc2(q1_min, q2, t)
                 return q3
 
-        # num_syms == 3:
+        if(num_syms == 2):
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
-        q2_w_syms = outer_prod(q2, syms)
-        q2_syms_permutations = q2_w_syms.unsqueeze(2)
-        q2_syms_permutations = q2_syms_permutations.repeat(1,1,48,1)
+                q2_w_syms = outer_prod(q2, syms)
+                q2_syms_permutations = q2_w_syms.unsqueeze(2)
+                q2_syms_permutations = q2_syms_permutations.repeat(1,1,48,1)
 
-        min_theta = 1000*torch.ones(q1.shape[0])
-        permutation_index = 0
-        for i in range(48):
-                dists = misorientation(q1_w_syms, q2_syms_permutations[:,:,i,:])
-                theta = torch.min(dists,-1)[0]
-                if (theta < min_theta): # would need element-wise inequality operator to avoid another for loop
-                        min_theta = theta # need element-wise operator here as well
-                        permutation_index = i
-                
-        dists = misorientation(q1_w_syms, q2_syms_permuatations[:,:,permutation_index,:])
-        inds = torch.min(dists,-1)[1]
+                min_theta = 1000*torch.ones(q1.shape[0])
+                indices1 = torch.zeros(q1.shape[0]) # indices for Q1 matrix
+                indices2 = torch.zeros(q2.shape[0]) # indices for Q2 matrix
+
+                q1_min = torch.zeros(q1.shape[0], 4)
+                q2_min = torch.zeros(q2.shape[0], 4)
+
+                for i in range(48):
+
+                        # import pdb; pdb.set_trace()
+                        # checking theta vs quat_dist performance
+                        dists = misorientation(q1_w_syms, q2_syms_permutations[:,i,i,:].unsqueeze(1)) # (7000, 48, 4) vs. (7000, 4) --> second one should get broadcasted.
+                        dists = quat_dist(q1_w_syms, q2_syms_permutations[:,i,i,:].unsqueeze(1)) 
+
+                        # dists here is 7000 by 48 (good.)
+                        theta = torch.min(dists,-1)[0] # 
+                        inds = torch.min(dists,-1)[1] # provides 7000 indices of range(0,48), to select symmetry w minimum theta, for each datapoint.                                                                                                
+
+                        min_mask = (theta < min_theta)
+                        min_theta[min_mask] = theta[min_mask] # update minimum theta for points where theta < minimum_theta.
+
+                        q2_min[min_mask] = q2_syms_permutations[min_mask][:,i,i,:]
+                        # q1_temp = q1_w_syms[inds]
+
+                        q1_temp = q1_w_syms[torch.arange(len(q1_w_syms)), inds]
+
+                        q1_min[min_mask] = q1_temp[min_mask]
+
+                q3 = slerp_calc2(q1_min, q2_min, t)
+
+                return q3
+
+        if(num_syms == 3):
+                import pdb; pdb.set_trace()
+                q3 = slerp_calc2(q1, q2, t)
+                q3_w_syms = outer_prod(q3, syms)
+                q3_w_syms = torch.movedim(q3_w_syms,2,1)
+                dists = misorientation(q1[:,None,None,:], q3) # unsqueeze two middle dimensions for q1.
+                inds = torch.min(dists,-1)[1]
+                q3 = q3_w_syms[torch.arange(len(q3_w_syms)), inds]
+
+                return q3
 
 
-        dists = misorientation(q1_syms_permutations, q2_syms_permutations)
-        inds = torch.min(dists,-1)[1]
-        q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
-        q2_temp = q2_syms_permutations[:,:,permutation_index,:]
-        q2_min = q2_temp[torch.arange(len(q2_temp)), inds1]
 
-        q3 = slerp_calc2(q1_min, q2_min, t)
-        return q3
+
+        # dists = misorientation(q1_syms_permutations, q2_syms_permutations)
+        # inds = torch.min(dists,-1)[1]
+        # q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
+        # q2_temp = q2_syms_permutations[:,:,permutation_index,:]
+        # q2_min = q2_temp[torch.arange(len(q2_temp)), inds1]
+
+        # q3 = slerp_calc2(q1_min, q2_min, t)
+        # return q3
 
         # q2_w_syms = outer_prod(q2, syms)
         # dists = misorientation(q1_w_syms, q2_w_syms)
@@ -406,7 +440,7 @@ def slerp2(q1, q2, t, syms, num_syms=0):
         # for i, indices in enumerate(indices_permute):
         #         q1_w_syms_permute[:,i,:] = q1_w_syms[:,indices, :]
 
-        return q3_min
+        # return q3_min
 
 # Most efficient upsampling function, with No nested for loops, and parallel computing.
 def quat_upsampling_symm3(X,scale=4):
@@ -434,7 +468,7 @@ def quat_upsampling_symm3(X,scale=4):
         q1.to(device); q2.to(device); t.to(device)
 
         # import pdb; pdb.set_trace()
-        q_interp_cols = slerp2(q1, q2, t, fcc_syms, 2) # seems like there are no NaN values here.
+        q_interp_cols = slerp2(q1, q2, t, fcc_syms, 0) # seems like there are no NaN values here.
         q_interp_cols = q_interp_cols.reshape(-1,X.shape[0],3,4)
         # dimensions should be the amount of interpolation pairs, rows, interpolations per pair, 4
 
@@ -444,7 +478,7 @@ def quat_upsampling_symm3(X,scale=4):
                 X_scaled[::scale, indices2, :] = q_interp_cols[i,:,:,:]
                 # X_scaled[::scale, indices2, :] = q_interp_cols[:,k-1,:].reshape(X.shape[0],-1,4)
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # Now, perform row-based interplation
         # ARE THERE ZERO QUATS GOING INTO Q1 OR Q2?
         q1 = torch.Tensor([]); q2 = torch.Tensor([])
@@ -453,7 +487,7 @@ def quat_upsampling_symm3(X,scale=4):
                 q2 = torch.cat([q2, X_scaled[(i+1)*scale,:,:]])
 
         # import pdb; pdb.set_trace()
-        q_interp_rows = slerp2(q1, q2, t, fcc_syms, 2)
+        q_interp_rows = slerp2(q1, q2, t, fcc_syms, 0)
         q_interp_rows = q_interp_rows.reshape(-1,X_scaled.shape[1],3,4)
         q_interp_rows = torch.movedim(q_interp_rows, 2, 1)
 
