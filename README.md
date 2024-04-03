@@ -1,1 +1,1 @@
-Symmetry-aware Spherical Linear Interpolation
+Symmetry-aware spherical linear interpolation, i.e. Symmetry SLERP.
