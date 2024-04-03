@@ -103,6 +103,7 @@ class Loss:
                     self.dist_func = rot_dist
                 elif dist_func == 'rot_dist_approx':
                     self.dist_func = RotDistLoss()
+                        
                 self.syms = syms
                 #self.quat_dim = quat_dim
         def __call__(self,q1,q2):                

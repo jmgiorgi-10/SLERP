@@ -4,6 +4,7 @@ from math import pi
 import torch
 import numpy as np
 
+
 inv_sqrt_2 = 1 / torch.sqrt(torch.tensor([2], dtype=torch.float32))
 
 half = 1 / torch.tensor([2], dtype=torch.float32)
@@ -61,30 +62,30 @@ fcc_syms = torch.tensor([
                 [half, -half, half, half],
                 [half, -half, -half, -half],
 
-                [-1, 0, 0, 0],
-                [0, -1, 0, 0],
-                [0, 0, -1, 0],
-                [0, 0, 0, -1],
-                [-inv_sqrt_2, -inv_sqrt_2, 0, 0 ],
-                [-inv_sqrt_2, 0, -inv_sqrt_2, 0],
-                [-inv_sqrt_2, 0, 0, -inv_sqrt_2],
-                [-inv_sqrt_2, inv_sqrt_2, 0, 0],
-                [-inv_sqrt_2, 0, inv_sqrt_2, 0],
-                [-inv_sqrt_2, 0, 0, inv_sqrt_2],
-                [0, -inv_sqrt_2, -inv_sqrt_2, 0],
-                [0, -inv_sqrt_2, 0, -inv_sqrt_2],
-                [0, 0, -inv_sqrt_2, -inv_sqrt_2],
-                [0, -inv_sqrt_2, inv_sqrt_2, 0],
-                [0, 0, -inv_sqrt_2, inv_sqrt_2],
-                [0, -inv_sqrt_2, 0, inv_sqrt_2],
-                [-half, -half, -half, -half],
-                [-half, half, half, -half],
-                [-half, half, -half, half],
-                [-half, -half, half, half],
-                [-half, -half, -half, half],
-                [-half, -half, half, -half],
-                [-half, half, -half, -half],
-                [-half, half, half, half]
+                # [-1, 0, 0, 0],
+                # [0, -1, 0, 0],
+                # [0, 0, -1, 0],
+                # [0, 0, 0, -1],
+                # [-inv_sqrt_2, -inv_sqrt_2, 0, 0],
+                # [-inv_sqrt_2, 0, -inv_sqrt_2, 0],
+                # [-inv_sqrt_2, 0, 0, -inv_sqrt_2],
+                # [-inv_sqrt_2, inv_sqrt_2, 0, 0],
+                # [-inv_sqrt_2, 0, inv_sqrt_2, 0],
+                # [-inv_sqrt_2, 0, 0, inv_sqrt_2],
+                # [0, -inv_sqrt_2, -inv_sqrt_2, 0],
+                # [0, -inv_sqrt_2, 0, -inv_sqrt_2],
+                # [0, 0, -inv_sqrt_2, -inv_sqrt_2],
+                # [0, -inv_sqrt_2, inv_sqrt_2, 0],
+                # [0, 0, -inv_sqrt_2, inv_sqrt_2],
+                # [0, -inv_sqrt_2, 0, inv_sqrt_2],
+                # [-half, -half, -half, -half],
+                # [-half, half, half, -half],
+                # [-half, half, -half, half],
+                # [-half, -half, half, half],
+                # [-half, -half, -half, half],
+                # [-half, -half, half, -half],
+                # [-half, half, -half, -half],
+                # [-half, half, half, half]
                
             ], dtype=torch.float32)
 
@@ -116,7 +117,7 @@ def vec2mat(X):
         #print('Q', Q.dtype)
         return torch.matmul(X,Q).reshape(new_shape)
 
-
+# Used if quaternion is in vector form
 def hamilton_prod(q1,q2):
 
         # import pdb; pdb.set_trace()
@@ -133,7 +134,8 @@ def hamilton_prod(q1,q2):
 
         return q_new
 
-def hadamard_prod(q1,q2):
+# quaternion (4x4) matrix-based hamilton product
+def matrix_hamilton_prod(q1,q2):
 
         # import pdb; pdb.set_trace()
 
@@ -205,9 +207,98 @@ def quat_dist(q1,q2=None):
         corr_clamp = torch.clamp(corr,-1,1)
         return safe_arccos(corr)
 
+# function below doesn't work if we cross a symmetry line
 def misorientation(q1, q2):
 #   import pdb; pdb.set_trace()
   return(4*torch.arcsin(torch.clamp(torch.linalg.vector_norm(q1 - q2, 2, dim=-1)/2,min=-1,max=1))) 
+
+def misor(q1, q2):
+#        import pdb; pdb.set_trace()
+#        q2_repeat = q2[None,...]
+#        q2_repeat = q2_repeat.repeat(5,1)
+       q_diff = matrix_hamilton_prod(q1, inverse2(q2))
+       return 2*torch.arccos(q_diff[...,0])
+
+# Returns a single minimum theta, with 24x24x1 symmetry
+def symm_double_misorientation(q1, q2):
+
+        import pdb; pdb.set_trace()
+
+        q1_w_syms = outer_prod(q1, fcc_syms)
+        q2_w_syms = outer_prod(q2, fcc_syms)
+
+        syms_diff_matrix = torch.zeros(max(q1.shape[0], q2.shape[0]),24,24)
+
+        for i in range(24):
+                for j in range(24):
+                        syms_diff_matrix[:,i,j] = misorientation(q1_w_syms[:,i,:], q2_w_syms[j,:]) # broadcast misorientation calc across the symmetry dimension.
+        import pdb; pdb.set_trace()
+
+        theta_mins = torch.Tensor([min(syms_diff_matrix[i].view(-1)) for i in range(5)])
+
+        return theta_mins
+
+# Returns a single minimum theta, with 24x24x2 symmetry
+def symm_complete_misorientation(q1, q2):
+        # import pdb; pdb.set_trace()
+
+        q1_w_syms = outer_prod(q1, fcc_syms)
+        q2_w_syms = outer_prod(q2, fcc_syms)
+
+        syms_diff_matrix = torch.zeros(max(q1.shape[0], q2.shape[0]), 24, 24, 2)
+
+        for i in range(24):
+               for j in range(24):
+                      syms_diff_matrix[:,i,j,0] = misor(q1_w_syms[:,i,:], q2_w_syms[None,j,:].repeat(5,1))
+                      syms_diff_matrix[:,i,j,1] = misor(q2_w_syms[None,j,:].repeat(5,1), q1_w_syms[:,i,:])
+
+        import pdb; pdb.set_trace()
+        theta_mins = torch.Tensor([min(syms_diff_matrix[i].view(-1)) for i in range(5)])
+        return theta_mins
+
+
+
+
+
+
+        # remove theta-0's (quaternion being compared to itself).
+        # syms_diff_matrix = syms_diff_matrix[syms_diff_matrix != 0]
+        # return torch.min(syms_diff_matrix.view(-1)) # find absolute minimum of multi-dimensional tensor by flattening it
+        # quats_num = max(q1.shape[0], q2.shape[0])
+        # min_thetas = torch.zeros(quats_num)
+
+        # for i in range(quats_num):
+        #         min_thetas[i] = torch.min(syms_diff_matrix[i],-1)
+
+        # Find the minimum value and its index
+        # min_value, min_index_flat = torch.min(syms_diff_matrix, dim=None)
+
+        # # (Will be useful for selecting q1 and q2 for slerp) Convert the overall minimum index to row and column indices
+        # min_index_row = min_index_flat // syms_diff_matrix.size(1)  # integer division for row index
+        # min_index_col = min_index_flat % syms_diff_matrix.size(1)   # remainder for column index
+
+
+
+def symm_misorientation(q1, q2=None):
+
+  import pdb; pdb.set_trace()
+  if (q2 is None):
+    q2 = torch.Tensor([1,0,0,0])
+
+  # delete this after!!!
+#   q1 = scalar_first2last(q1)
+#   q2 = scalar_first2last(q2)
+
+  q1_w_syms = outer_prod(q1, fcc_syms)
+  q2 = q2.repeat(tuple(q1_w_syms.shape[:-1]) + tuple([1]))   
+
+  # I think outer product is just computing misorientation between each pair of same iterations of the 24 symmetries (i.e., Not all possible permutations)
+
+  # import pdb; pdb.set_trace()
+  dists = misorientation(q1_w_syms, q2)
+  disorientation = torch.min(dists,-1)[0]
+
+  return(disorientation)
         
 def rot_dist(q1,q2=None):
         """ Get dist between two rotations, with q <-> -q symmetry """
@@ -223,18 +314,15 @@ def fz_reduce(q,syms):
         q = q.reshape((-1,4))
         # syms = syms.cuda()
         q_w_syms = outer_prod(q,syms)
+        # import pdb; pdb.set_trace
         dists = rot_dist(q_w_syms)
         inds = dists.min(-1)[1]
-        q_fz = q_w_syms[torch.arange(len(q_w_syms)),inds]
+        q_fz = q_w_syms[torch.arange(len(q_w_syms)),dists]
         q_fz *= torch.sign(q_fz[...,:1])
         q_fz = q_fz.reshape(shape)
         return q_fz
 
-def misorientation_reduce(X, syms):
-        ref_indices = torch.Tensor([])
-
 def inverse2(q):
-
         # import pdb; pdb.set_trace()
         q = torch.Tensor([1,-1,-1,-1])*q
         norm = (torch.linalg.vector_norm(q, 2, dim=-1))**2
@@ -263,6 +351,7 @@ def quat_exp2(q, t):
         mask2 = (torch.all(q[:,1:4] != torch.Tensor([0,0,0]),dim=-1))
 
         # obtain unit versor (not present in slerp3 code)
+        # q[:, 1:4] is not normalized, this should be equivalent to dividing it by sin(theta/2)
         v_unit[mask2] = v[mask2] / torch.linalg.vector_norm(v[mask2],2,-1).unsqueeze(-1)
 
         # qm.w = (qa.w * 0.5 + qb.w * 0.5);
@@ -281,42 +370,94 @@ def quat_exp2(q, t):
 
         return q_new
 
-# def quat_exp(q, t):
-#         theta = torch.arccos(q[:,0])
-#         cos = torch.cos(theta*t)
-#         sin = torch.sin(theta*t)
-#         # this returns a list of tensors, each of size len(interpolations)
+# quaternion to a scalar power
+def quat_exp(q, t):
 
-#         ans = torch.cat([cos, q[:,1]*sin, q[:,2]*sin, q[:,3]*sin])
-#         ans = torch.reshape(ans, (4,-1))
-#         ans = ans.t()
-#         return(ans)
+        # import pdb; pdb.set_trace()
+        theta = math.acos(np.clip(q[0],-1,1))
 
-# standard spherical linear interpolation algorithm
-# def slerp_calc(q1, q2, t):
-#         # import pdb; pdb.set_trace()
-#         q_slerp = hadamard_prod(q1, quat_exp(hadamard_prod(inverse(q1),q2), t))
-#         return q_slerp
+        v = q[1:4]
+        norm = torch.linalg.norm(q[1:4],2)
 
+        if (v.all() != 0):
+                v = q[1:4] / norm
 
+        return torch.Tensor([math.cos(theta*t),v[0].item()*math.sin(theta*t),v[1].item()*math.sin(theta*t),v[2].item()*math.sin(theta*t)])
 
+        # theta = torch.arccos(q[0])
+        # cos = torch.cos(theta*t)
+        # sin = torch.sin(theta*t)
+        # # this returns a list of tensors, each of size len(interpolations)
+
+        # ans = torch.cat([cos, q[1]*sin, q[2]*sin, q[3]*sin])
+        # ans = torch.reshape(ans, (4,-1))
+        # ans = ans.t()
+        # return(ans)
+
+# Single quaternion slerp calculation
+def slerp_calc(q1, q2, t):
+        # import pdb; pdb.set_trace()
+        q_slerp = matrix_hamilton_prod(q1, quat_exp(matrix_hamilton_prod(inverse2(q1),q2), t))
+        return q_slerp
+
+# Parallel slerp calculation
 def slerp_calc2(q1, q2, t):
         # import pdb; pdb.set_trace()
         # edited to unsqueeze q1 in dim=1, to render it broadcastable with the exponentiated quaternion for various values of interpolation parameter 't'
 
-        # ensure unit quaternion
-        # q1 = q1 / torch.linalg.vector_norm(q1,2,-1).unsqueeze(-1)
-        # q2 = q2 / torch.linalg.vector_norm(q2,2,-1).unsqueeze(-1)
+        # if q2 = None, we want to slerp only with respect to the axis formed by the first quaternion with respect to Theta = 0.
+        if (q2 is None):
+                q2 = torch.Tensor([1,0,0,0])
+                q2 = q2[None, None, :]
+                q2 = torch.repeat(q1.shape[0], q1.shape[1], 1)
 
-        ## ERROR: In outer hamilton product, q1 should get repeated in the 't' dimenision, after squeezing
-        
+        # choose q2 that produces an angle smaller than 90 degrees.
         q_slerp = hamilton_prod(quat_exp2(hamilton_prod(q2, inverse2(q1)), t), q1.unsqueeze(1).repeat(1,3,1))
-        # import pdb; pdb.set_trace()
+
         return q_slerp
+
+def slerp_calc3(q1, q2, t):
+       A = matrix_hamilton_prod(inverse2(q1), q2)
+       A_syms = outer_prod(A, fcc_syms)
+       A_syms *= torch.sign
+
+       qs = inverse2(inverse2(q1))
 
 # should only need to apply disorientation slerp twice, once to fill in cols, and once to fill in rows.
 # used for symmetry-aware-slerp: compare all slerps
         # inputs required: symmetry matrix, quaternions whose misorientations are being compared.
+
+def disorientation_slerp(q1, q2, t, syms):
+
+        # import pdb; pdb.set_trace()
+        q1_w_syms = outer_prod(q1, syms)
+
+        # q2_repeat = q2.unsqueeze(1)
+        # q2_repeat = q2_repeat.repeat(1, 48, 1)
+
+        dists = misorientation(q1_w_syms, q2[None,:])
+        inds1 = torch.min(dists,-1)[1]
+
+        # q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
+        q1_min = q1_w_syms[inds1, :]
+
+        q3 = slerp_calc(q1_min, q2, t) # only one slerp calculated, per thread, for two quats with minimum disorientation
+
+        # Set to rotation=0 w respect to reference, if the symm_misorientation is not texture
+        # if (symm_misorientation(q1,q3)*180/np.pi > 5):
+        #        q3 = torch.Tensor([1,0,0,0])
+      
+        # if symm_misorientation between data points is smaller than 5, we should be in a grain region.
+        # if (symm_misorientation(q1_min,q2)*180/np.pi < 5 and symm_misorientation(q1_min,q3)*180/np.pi > 5):
+        #         import pdb; pdb.set_trace()
+
+        # if (symm_misorientation(q1_min,q2)*180/np.pi < 5 and symm_misorientation(q2, q3)*180/np.pi > 5):
+        #         import pdb; pdb.set_trace()
+
+        return q3
+
+        # X_scaled[indices[0], indices[1], :] = q3
+
 
 # def slerp(X_scaled, indices, q1, q2, t, syms):
 
@@ -335,25 +476,136 @@ def slerp_calc2(q1, q2, t):
 
 #         X_scaled[indices[0], indices[1], :] = q3
  
+ 
 
-# num_syms parameter: should disorientation be calculated for no quaternions, 1 quaternion, or both (2) quaterniions
+# num_syms parameter: should disorientation be calculated for no quaternions, 1 quaternion, or both (2) quaternions
 def slerp2(q1, q2, t, syms, num_syms=0):
 
-        if (num_syms == 0):
-                q3 = slerp_calc2(q1, q2, t)
+        if (num_syms == -3):
+                import pdb; pdb.set_trace()
+                A = matrix_hamilton_prod(q1, inverse2(q2)) # transformation from crystal frame 1, to crystal frame 2
+                A_syms = outer_prod(A, fcc_syms) # symmetry equivalent transformations
+                A_syms *= torch.sign(A_syms[...,:1]) # ensure we are on 
+                a_min_indices = torch.max(A_syms[...,0],-1)[1]
+                A_min = A_syms[torch.arange(len(A_syms)), a_min_indices]
+                qs = inverse2(matrix_hamilton_prod(inverse2(q1), A_min))
+                
+                q3 = slerp_calc2(q1, qs, t)
                 return q3
 
-        q1_w_syms = outer_prod(q1, syms)
 
-        q2_repeat = q2.unsqueeze(1)
-        q2_repeat = q2_repeat.repeat(1, 48, 1)
-        # dists = misorientation(q1_w_syms, q2_repeat)
-        dists = quat_dist(q1_w_syms, q2_repeat)
-        inds1 = torch.min(dists,-1)[1]
-        q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
+
+        # avoid symmetry (fundamental zone) crossing:
+        if (num_syms == -2):
+                q1_w_syms = outer_prod(q1, syms)
+                import pdb; pdb.set_trace()
+                q1_diff = torch.sum(torch.abs(q1_w_syms[...,1:4] - q2[:, None, 1:4]), -1)
+                inds = torch.min(q1_diff, -1)[1]
+                q1_symm_restrict = q1_w_syms[torch.arange(len(q1_w_syms)), inds]
+
+                q3 = slerp_calc2(q1_symm_restrict, q2, t)
+
+                return q3
+        
+        # Attempting pair-wise symmetry now.
+        if (num_syms == -1):
+                import pdb; pdb.set_trace()
+
+                # apply only the same symmetry operators to q1 and q2.
+
+                q1_w_syms = outer_prod(q1, syms)
+                q2_w_syms = outer_prod(q2, syms)
+
+                dists1 = misorientation(q1_w_syms, q2[:,None,:])
+                dists2 = misorientation(q2_w_syms, q1[:,None,:])
+
+                [theta1_min, inds1] = torch.min(dists1, -1)
+                [theta2_min, inds2] = torch.min(dists2, -1)
+
+                q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
+                q2_min = q2_w_syms[torch.arange(len(q2_w_syms)), inds2]
+                q3A = slerp_calc2(q1_min, q2, t)
+                q3B = slerp_calc2(q1, q2_min, t)
+
+                mask = (theta1_min < theta2_min)
+                q3 = q3B
+                q3[mask] = q3A[mask]
+
+      
+                # thetas = misorientation(q1[:,None,:], q3)
+                # long_path_mask = (torch.abs(thetas) > np.pi/2)
+                # q3[long_path_mask] = slerp_calc2(q1, -q2, t)[long_path_mask]
+
+                return q3
+
+                # q3 = slerp_calc2(q1, q2, t)
+                # q3_w_syms = outer_prod(q3,syms)
+
+                # for i in range(3):
+                #         q = q3_w_syms[:,i,:,:]
+                #         dists1 = rot_dist(q, q1)
+                #         dists2 = rot_dist(q, q2)
+                #         dists_net = torch.abs(dists1 - dists2) / (dists1)
+                #         inds = torch.min(dists_net,-1)[1]
+                #         q3[:,i,:] = q[torch.arange(len(q)), inds]
+
+                # return q3
+                
+
+        # symmetry reduction of interpolated point vs q1 or q2
+        if (num_syms == 0):
+
+                import pdb; pdb.set_trace()
+
+                q3 = slerp_calc2(q1, q2, t)
+                # choose q2 that produces an angle smaller than 90 degrees.
+                thetas = misorientation(q1[:,None,:], q3)
+                long_path_mask = (torch.abs(thetas) > np.pi/2)
+                q3[long_path_mask] = slerp_calc2(q1, -q2, t)[long_path_mask]
+
+
+                # re-orient interpolated q3 with respect to original q1
+                
+                # q3 = slerp_calc2(q3, q1_repeat)
+
+                # q3_w_syms = outer_prod(q3,syms)
+                # # q1 = q1[:,None,:]
+                # # q1_repeat = q1.repeat(1,48,1)
+
+                # for i in range(3):
+                #         q = q3_w_syms[:,i,:,:]
+                #         inds = rot_dist(q, q2)
+                #         q3[:,i,:] = q[torch.arange(len(q)), inds]
+
+                return q3
+
+        # q1_w_syms = outer_prod(q1, syms)
+
+        # q2_repeat = q2.unsqueeze(1)
+        # q2_repeat = q2_repeat.repeat(1, 48, 1)
+        # # dists = misorientation(q1_w_syms, q2_repeat)
+        # dists = quat_dist(q1_w_syms, q2_repeat)
+        
+        # # remove nan from theta tensor (dists)
+
+        # inds1 = torch.min(dists,-1)[1]
+        # q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
 
         if(num_syms == 1):
+                # import pdb; pdb.set_trace()
+
+                q1_w_syms = outer_prod(q1, syms)
+                q2_repeat = q2[:,None,:].repeat(1,24,1)
+                dists1 = misorientation(q1_w_syms, q2_repeat)
+                [theta1_min, inds1] = torch.min(dists1, -1)
+
+                q1_min = q1_w_syms[torch.arange(len(q1_w_syms)), inds1]
                 q3 = slerp_calc2(q1_min, q2, t)
+         
+
+                # re-orient interpolated q3 with respect to original q1.
+
+
                 return q3
 
         if(num_syms == 2):
@@ -397,7 +649,6 @@ def slerp2(q1, q2, t, syms, num_syms=0):
                 return q3
 
         if(num_syms == 3):
-                import pdb; pdb.set_trace()
                 q3 = slerp_calc2(q1, q2, t)
                 q3_w_syms = outer_prod(q3, syms)
                 q3_w_syms = torch.movedim(q3_w_syms,2,1)
@@ -442,19 +693,16 @@ def slerp2(q1, q2, t, syms, num_syms=0):
 
         # return q3_min
 
-# Most efficient upsampling function, with No nested for loops, and parallel computing.
+
 def quat_upsampling_symm3(X,scale=4):
 
-        # already changed to scalar-first convention, in the main file
         device = torch.device('cuda:0')
 
         interp_rows = (scale-1)*(X.shape[0]-1)
         interp_cols = (scale-1)*(X.shape[1]-1)
 
-        X_scaled = torch.zeros((scale*X.shape[0], scale*X.shape[1], 4))
+        X_scaled = torch.zeros((scale*X.shape[0], scale*X.shape[1], 4), dtype=X.dtype)
         X_scaled[::scale, ::scale, :] = X
-
-        # additional matrix to hold intermediate result of the column-wise slerp
 
         delta_t = 1 / scale
         t = torch.Tensor([delta_t * k for k in range(1, scale)]) # try to make 't' outer product friendly
@@ -467,33 +715,28 @@ def quat_upsampling_symm3(X,scale=4):
         
         q1.to(device); q2.to(device); t.to(device)
 
-        # import pdb; pdb.set_trace()
-        q_interp_cols = slerp2(q1, q2, t, fcc_syms, 0) # seems like there are no NaN values here.
+        q_interp_cols = slerp2(q1, q2, t, fcc_syms, -3) # seems like there are no NaN values here.
         q_interp_cols = q_interp_cols.reshape(-1,X.shape[0],3,4)
         # dimensions should be the amount of interpolation pairs, rows, interpolations per pair, 4
 
-        # for i in range(X.shape[0]):
         for i in range(q_interp_cols.shape[0]): # looping through all interpolations pairs
                 indices2 = range(scale*i + 1, scale*i+scale, 1)
                 X_scaled[::scale, indices2, :] = q_interp_cols[i,:,:,:]
-                # X_scaled[::scale, indices2, :] = q_interp_cols[:,k-1,:].reshape(X.shape[0],-1,4)
-
-        # import pdb; pdb.set_trace()
+    
         # Now, perform row-based interplation
-        # ARE THERE ZERO QUATS GOING INTO Q1 OR Q2?
         q1 = torch.Tensor([]); q2 = torch.Tensor([])
         for i in range(X.shape[0]-1):
                 q1 = torch.cat([q1, X_scaled[i*scale,:,:]])
                 q2 = torch.cat([q2, X_scaled[(i+1)*scale,:,:]])
 
-        # import pdb; pdb.set_trace()
-        q_interp_rows = slerp2(q1, q2, t, fcc_syms, 0)
+        q_interp_rows = slerp2(q1, q2, t, fcc_syms, -3)
         q_interp_rows = q_interp_rows.reshape(-1,X_scaled.shape[1],3,4)
         q_interp_rows = torch.movedim(q_interp_rows, 2, 1)
 
         for i in range(q_interp_rows.shape[0]): # looping through all interpolations pairs
                 indices2 = range(scale*i + 1, scale*i+scale, 1)
                 X_scaled[indices2, :, :] = q_interp_rows[i,:,:,:]
+        # X_scaled[::scale, ::scale, :] = torch.zeros(4) # return original data points to zero, to ipf map only interpolated points.
 
         return X_scaled
 
@@ -541,11 +784,10 @@ def quat_upsampling_symm2(X,scale=4):
         return(X_scaled)
 
 # Original function used for upsampling, without parallel computing
-def quat_upsampling_symm(X, scale=4): # X is low-resolution numpy-array
+def quat_upsampling_symm(X, scale=4, symm=False): # X is low-resolution numpy-array
         # import pdb; pdb.set_trace()
 
-        X = scalar_last2first(X) # convert from quaternion scalar_last convention to scalar_first.
-
+        # X = scalar_last2first(X) # convert from quaternion scalar_last convention to scalar_first.
         X_rows = X.shape[0]; X_cols = X.shape[1]
         interp_factor = scale
         X_SR = np.zeros([scale * X_rows, scale * X_cols, 4], dtype=np.float32) # Super-resolved numpy-array
@@ -553,6 +795,8 @@ def quat_upsampling_symm(X, scale=4): # X is low-resolution numpy-array
         for i in range(scale * X_rows):
 
             for j in range(scale * X_cols):
+
+                # import pdb; pdb.set_trace()
 
                 x1 = math.floor(j/scale)
                 x2 = math.floor(j/scale) + 1
@@ -570,13 +814,23 @@ def quat_upsampling_symm(X, scale=4): # X is low-resolution numpy-array
                 q3 = X[y1][x1]
                 q4 = X[y1][x2]
                 t_x = (j % scale) / scale # find mod, and normalize to obtain interpolation parameter, 't'.
-                q_interp_x1 = disorientation_slerp(q1, q2, t_x)
-                q_interp_x2 = disorientation_slerp(q3, q4, t_x)
+                
+                if (symm == True):
+                        q_interp_x1 = disorientation_slerp(q1, q2, t_x, fcc_syms)
+                        q_interp_x2 = disorientation_slerp(q3, q4, t_x, fcc_syms)
+                else:
+                        q_interp_x1 = slerp_calc(q1, q2, t_x)
+                        q_interp_x2 = slerp_calc(q3, q4, t_x)
+
                 # y-interpolation:
                 t_y = (i % scale) / scale
-                X_SR[i][j] = disorientation_slerp(q_interp_x1, q_interp_x2, t_y) # slerp returns Quat object, so get its numpy array.
 
-        return(X_SR)
+                if (symm == True):
+                        X_SR[i][j] = disorientation_slerp(q_interp_x1, q_interp_x2, t_y, fcc_syms) # slerp returns Quat object, so get its numpy array.
+                else:
+                        X_SR[i][j] = slerp_calc(q_interp_x1, q_interp_x2, t_y) # slerp returns Quat object, so get its numpy array.
+
+        return X_SR 
 
 def scalar_first2last(X):
         return torch.roll(X,-1,-1)
@@ -604,7 +858,6 @@ def rotate(q,points,element_wise=False):
                                 (None,)*(len(P.shape)) + (slice(None),)
                 X_out = (vec2mat(X_int) * conj(q)[inds]).sum(-1)
         return X_out[...,1:]
-
 
 
 # A simple script to test the quats class for numpy and torch

@@ -40,10 +40,10 @@ fcc_syms = outer_prod(fcc_r12,fcc_r3).reshape((-1,4))
 #fcc_syms1 = fcc_r3.outer_prod(fcc_r12).reshape(-1)
 
 #import pdb; pdb.set_trace()
-inv_sqrt_2 = 1 / torch.sqrt(torch.tensor([2], dtype=torch.float32))
+inv_sqrt_2 = 1 / torch.sqrt(torch.tensor([2], dtype=torch.float64))
 
 #inv_sqrt_2 = torch.tensor([0.70710678118], dtype=torch.float64)
-half = 1 / torch.tensor([2], dtype=torch.float32)
+half = 1 / torch.tensor([2], dtype=torch.float64)
 
 # fcc_syms = torch.tensor([
 #                 [1, 0, 0, 0],
@@ -99,30 +99,30 @@ fcc_syms = torch.tensor([
                 [half, -half, half, half],
                 [half, -half, -half, -half],
 
-                [-1, 0, 0, 0],
-                [0, -1, 0, 0],
-                [0, 0, -1, 0],
-                [0, 0, 0, -1],
-                [-inv_sqrt_2, -inv_sqrt_2, 0, 0 ],
-                [-inv_sqrt_2, 0, -inv_sqrt_2, 0],
-                [-inv_sqrt_2, 0, 0, -inv_sqrt_2],
-                [-inv_sqrt_2, inv_sqrt_2, 0, 0],
-                [-inv_sqrt_2, 0, inv_sqrt_2, 0],
-                [-inv_sqrt_2, 0, 0, inv_sqrt_2],
-                [0, -inv_sqrt_2, -inv_sqrt_2, 0],
-                [0, -inv_sqrt_2, 0, -inv_sqrt_2],
-                [0, 0, -inv_sqrt_2, -inv_sqrt_2],
-                [0, -inv_sqrt_2, inv_sqrt_2, 0],
-                [0, 0, -inv_sqrt_2, inv_sqrt_2],
-                [0, -inv_sqrt_2, 0, inv_sqrt_2],
-                [-half, -half, -half, -half],
-                [-half, half, half, -half],
-                [-half, half, -half, half],
-                [-half, -half, half, half],
-                [-half, -half, -half, half],
-                [-half, -half, half, -half],
-                [-half, half, -half, -half],
-                [-half, half, half, half]
+                # [-1, 0, 0, 0],
+                # [0, -1, 0, 0],
+                # [0, 0, -1, 0],
+                # [0, 0, 0, -1],
+                # [-inv_sqrt_2, -inv_sqrt_2, 0, 0 ],
+                # [-inv_sqrt_2, 0, -inv_sqrt_2, 0],
+                # [-inv_sqrt_2, 0, 0, -inv_sqrt_2],
+                # [-inv_sqrt_2, inv_sqrt_2, 0, 0],
+                # [-inv_sqrt_2, 0, inv_sqrt_2, 0],
+                # [-inv_sqrt_2, 0, 0, inv_sqrt_2],
+                # [0, -inv_sqrt_2, -inv_sqrt_2, 0],
+                # [0, -inv_sqrt_2, 0, -inv_sqrt_2],
+                # [0, 0, -inv_sqrt_2, -inv_sqrt_2],
+                # [0, -inv_sqrt_2, inv_sqrt_2, 0],
+                # [0, 0, -inv_sqrt_2, inv_sqrt_2],
+                # [0, -inv_sqrt_2, 0, inv_sqrt_2],
+                # [-half, -half, -half, -half],
+                # [-half, half, half, -half],
+                # [-half, half, -half, half],
+                # [-half, -half, half, half],
+                # [-half, -half, -half, half],
+                # [-half, -half, half, -half],
+                # [-half, half, -half, -half],
+                # [-half, half, half, half]
                
             ], dtype=torch.float32)
 
