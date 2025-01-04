@@ -1,1 +1,1 @@
-Symmetry-aware spherical linear interpolation, i.e. Symmetry SLERP.
+Symmetry-aware spherical linear interpolation. Correctly interpolates along shortest path between orientations of equivalently shaped 3D objects. Computer outer product of difference quaternion (e.g. q_1q_2^{-1}), and selects the option of minimum angle.
